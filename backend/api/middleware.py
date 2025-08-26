@@ -1,13 +1,11 @@
 from django.conf import settings
-from django.utils.deprecation import MiddlewareMixin
+from django.middleware.csrf import CsrfViewMiddleware
 
-
-class CSRFExemptMiddleware(MiddlewareMixin):
-    def process_request(self, request):
-        # Check if the request path is in the CSRF exempt URLs
-        if hasattr(settings, 'CSRF_EXEMPT_URLS'):
-            for url in settings.CSRF_EXEMPT_URLS:
-                if request.path.startswith(url):
-                    setattr(request, '_dont_enforce_csrf_checks', True)
-                    break
-        return None 
+class CSRFExemptMiddleware(CsrfViewMiddleware):
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        # Exempt specified URLs from CSRF checks
+        path = request.path
+        for exempt_url in settings.CSRF_EXEMPT_URLS:
+            if path.endswith(exempt_url):
+                return None  # Skip CSRF check
+        return super().process_view(request, view_func, view_args, view_kwargs)

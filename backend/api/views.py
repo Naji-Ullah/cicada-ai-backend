@@ -11,6 +11,16 @@ from .serializers import UserSerializer, ChatMessageSerializer, ChatRequestSeria
 from .models import ChatMessage
 from .services import GeminiService
 import logging
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from django.contrib.auth import authenticate
+from .serializers import UserSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +30,7 @@ class AuthView(APIView):
     permission_classes = [AllowAny]
     
     def post(self, request):
-        """Handle user login"""
+        """Handle user login with JWT"""
         username = request.data.get('username')
         password = request.data.get('password')
         
@@ -32,10 +42,13 @@ class AuthView(APIView):
         
         user = authenticate(username=username, password=password)
         if user:
-            login(request, user)
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
             serializer = UserSerializer(user)
             return Response({
                 'user': serializer.data,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
                 'message': 'Login successful'
             })
         else:
@@ -99,12 +112,25 @@ class RegisterView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
-    permission_classes = [AllowAny]  # Allow logout even if not authenticated
+    permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        """Handle user logout"""
-        logout(request)
-        return Response({'message': 'Logout successful'})
+        """Handle user logout by blacklisting refresh token"""
+        try:
+            refresh_token = request.data.get("refresh")
+            if not refresh_token:
+                return Response(
+                    {'error': 'Refresh token required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({'message': 'Logout successful'})
+        except Exception as e:
+            return Response(
+                {'error': 'Invalid token'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class UserProfileView(APIView):
